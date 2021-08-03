@@ -1013,7 +1013,7 @@ contract KrillFeeBatch is Ownable {
 
     // Tokens used
     address public wNative ;
-    address public krill;
+    address public krill; //Krill token
 
     address public treasury;
     address public rewardPool;
