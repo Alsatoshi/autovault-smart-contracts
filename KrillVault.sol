@@ -866,7 +866,6 @@ interface IStrategy {
     function withdraw(uint256) external;
     function balanceOf() external view returns (uint256);
     function harvest() external;
-    function retireStrat() external;
     function panic() external;
     function pause() external;
     function unpause() external;
@@ -882,21 +881,14 @@ interface IStrategy {
 contract KrillVault is ERC20, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
-
-    struct StratCandidate {
-        address implementation;
-        uint proposedTime;
-    }
-
-    // The last proposed strategy to switch to.
-    StratCandidate public stratCandidate;
+    
     // The strategy currently in use by the vault.
     IStrategy public strategy;
-    // The minimum time it has to pass before a strat candidate can be approved.
-    uint256 public immutable approvalDelay;
 
-    event NewStratCandidate(address implementation);
-    event UpgradeStrat(address implementation);
+    event Deposit(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
+    event InCaseTokensGetStuck(address indexed user, address token);
+
 
     /**
      * @dev Sets the value of {token} to the token that the vault will
@@ -905,20 +897,17 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
      * to withdraw the corresponding portion of the underlying assets.
      * @param _strategy the address of the strategy.
      * @param _name the name of the vault token.
-     * @param _symbol the symbol of the vault token.
-     * @param _approvalDelay the delay before a new strat can be approved.
+     * @param _symbol the symbol of the vault token
      */
     constructor (
         IStrategy _strategy,
         string memory _name,
-        string memory _symbol,
-        uint256 _approvalDelay
+        string memory _symbol
     ) public ERC20(
         _name,
         _symbol
     ) {
         strategy = _strategy;
-        approvalDelay = _approvalDelay;
     }
 
     function want() public view returns (IERC20) {
@@ -968,7 +957,7 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
 
         uint256 _pool = balance();
         want().safeTransferFrom(msg.sender, address(this), _amount);
-        earn();
+        earn(_amount);
         uint256 _after = balance();
         _amount = _after.sub(_pool); // Additional check for deflationary tokens
         uint256 shares = 0;
@@ -978,17 +967,22 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
             shares = (_amount.mul(totalSupply())).div(_pool);
         }
         _mint(msg.sender, shares);
+
+        emit Deposit(msg.sender, _amount);
     }
+
 
     /**
      * @dev Function to send funds into the strategy and put them to work. It's primarily called
      * by the vault's deposit() function.
      */
-    function earn() public {
-        uint _bal = available();
-        want().safeTransfer(address(strategy), _bal);
+    function earn(uint _amount) internal {
+        uint256 _prevBal = balance();
+        want().safeTransfer(address(strategy), _amount);
         strategy.deposit();
+        require(balance() >= _prevBal, "not profitable");
     }
+
 
     /**
      * @dev A helper function to call withdraw() with all the sender's funds.
@@ -1011,47 +1005,13 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
             uint _withdraw = r.sub(b);
             strategy.withdraw(_withdraw);
             uint _after = want().balanceOf(address(this));
-            uint _diff = _after.sub(b);
-            if (_diff < _withdraw) {
-                r = b.add(_diff);
-            }
+            r = _after;
+            
         }
 
         want().safeTransfer(msg.sender, r);
-    }
 
-    /** 
-     * @dev Sets the candidate for the new strat to use with this vault.
-     * @param _implementation The address of the candidate strategy.  
-     */
-    function proposeStrat(address _implementation) public onlyOwner {
-        require(address(this) == IStrategy(_implementation).vault(), "Proposal not valid for this Vault");
-        stratCandidate = StratCandidate({
-            implementation: _implementation,
-            proposedTime: block.timestamp
-         });
-
-        emit NewStratCandidate(_implementation);
-    }
-
-    /** 
-     * @dev It switches the active strat for the strat candidate. After upgrading, the 
-     * candidate implementation is set to the 0x00 address, and proposedTime to a time 
-     * happening in +100 years for safety. 
-     */
-
-    function upgradeStrat() public onlyOwner {
-        require(stratCandidate.implementation != address(0), "There is no candidate");
-        require(stratCandidate.proposedTime.add(approvalDelay) < block.timestamp, "Delay has not passed");
-
-        emit UpgradeStrat(stratCandidate.implementation);
-
-        strategy.retireStrat();
-        strategy = IStrategy(stratCandidate.implementation);
-        stratCandidate.implementation = address(0);
-        stratCandidate.proposedTime = 5000000000;
-
-        earn();
+        emit Withdraw(msg.sender, _amount);
     }
 
     /**
@@ -1063,5 +1023,7 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
 
         uint256 amount = IERC20(_token).balanceOf(address(this));
         IERC20(_token).safeTransfer(msg.sender, amount);
+
+        emit InCaseTokensGetStuck(msg.sender, _token);
     }
 }

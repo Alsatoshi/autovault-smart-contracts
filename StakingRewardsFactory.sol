@@ -704,7 +704,6 @@ contract StakingRewardsFactory is Ownable {
     }
 
 
-
     ///// permissionless functions
 
     // call notifyRewardAmount for all staking tokens.
@@ -717,7 +716,7 @@ contract StakingRewardsFactory is Ownable {
 
     // notify reward amount for an individual staking token.
     // this is a fallback in case the notifyRewardAmounts costs too much gas to call for all contracts
-    function notifyRewardAmount(address stakingToken) public {
+    function notifyRewardAmount(address stakingToken) public ReentrancyGuard {
         require(block.timestamp >= stakingRewardsGenesis, 'StakingRewardsFactory::notifyRewardAmount: not ready');
 
         StakingRewardsInfo storage info = stakingRewardsInfoByStakingToken[stakingToken];
@@ -729,10 +728,15 @@ contract StakingRewardsFactory is Ownable {
             info.rewardAmount = 0;
             info.duration = 0;
 
+            uint256 balBefore = IERC20(rewardsToken).balanceOf(info.stakingRewards);
+
             require(
                 IERC20(rewardsToken).transfer(info.stakingRewards, rewardAmount),
                 'StakingRewardsFactory::notifyRewardAmount: transfer failed'
             );
+
+            rewardAmount = IERC20(rewardsToken).balanceOf(info.stakingRewards).sub(balBefore);
+
             StakingRewards(info.stakingRewards).notifyRewardAmount(rewardAmount, duration);
         }
     }

@@ -1182,6 +1182,9 @@ contract StratManager is Ownable, Pausable {
         unirouter = _unirouter;
         vault = _vault;
         krillFeeRecipient = _krillFeeRecipient;
+
+        require(_krillFeeRecipient != address(0));
+        require(_strategist != address(0));
     }
 
     // checks that caller is either owner or keeper.
@@ -1284,9 +1287,9 @@ contract StrategyAave is StratManager, FeeManager {
     // Tokens used
     address constant public wmatic = address(0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270);
     address constant public eth = address(0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619);
-    address public want;
-    address public aToken;
-    address public varDebtToken;
+    address public immutable want;
+    address public immutable aToken;
+    address public immutable varDebtToken;
 
     // Third party contracts
     address constant public dataProvider = address(0x7551b5D2763519d4e37e8B81929D336De671d46d);
@@ -1306,9 +1309,9 @@ contract StrategyAave is StratManager, FeeManager {
      * {INTEREST_RATE_MODE}  - The type of borrow debt. Stable: 1, Variable: 2.
      */
     uint256 public borrowRate;
-    uint256 public borrowRateMax;
+    uint256 public immutable borrowRateMax;
     uint256 public borrowDepth;
-    uint256 public minLeverage;
+    uint256 public immutable minLeverage;
     uint256 constant public BORROW_DEPTH_MAX = 10;
     uint256 constant public INTEREST_RATE_MODE = 2;
 
@@ -1323,6 +1326,12 @@ contract StrategyAave is StratManager, FeeManager {
      */
     event StratHarvest(address indexed harvester);
     event StratRebalance(uint256 _borrowRate, uint256 _borrowDepth);
+
+    bool calledPanic;
+
+    event Panic();
+    event Pause();
+    event Unpause();
 
     constructor(
         address _want,
@@ -1343,6 +1352,13 @@ contract StrategyAave is StratManager, FeeManager {
         borrowRateMax = _borrowRateMax;
         borrowDepth = _borrowDepth;
         minLeverage = _minLeverage;
+
+        require(want != wmatic);
+        require(_krillFeeRecipient != address(0));
+        require(_strategist != address(0));
+        require(borrowRateMax < 100);
+        require(borrowRate < borrowRateMax);
+        require(borrowDepth < BORROW_DEPTH_MAX);
 
         if (want == eth) {
             wmaticToWantRoute = [wmatic, eth];
@@ -1525,7 +1541,7 @@ contract StrategyAave is StratManager, FeeManager {
     }
 
     // returns the user account data across all the reserves
-    function userAccountData() public view returns (
+    function userAccountData() external view returns (
         uint256 totalCollateralETH,
         uint256 totalDebtETH,
         uint256 availableBorrowsETH,
@@ -1552,34 +1568,30 @@ contract StrategyAave is StratManager, FeeManager {
         return supplyBal.sub(borrowBal);
     }
 
-    // called as part of strat migration. Sends all the available funds back to the vault.
-    function retireStrat() external {
-        require(msg.sender == vault, "!vault");
-
-        _deleverage();
-
-        uint256 wantBal = IERC20(want).balanceOf(address(this));
-        IERC20(want).transfer(vault, wantBal);
-    }
-
     // pauses deposits and withdraws all funds from third party systems.
-    function panic() public onlyManager {
+    function panic() external onlyManager {
+        require(!calledPanic, 'Panic was already called once before.');
         _deleverage();
         pause();
+
+        calledPanic = true;
+
+        emit Panic();
     }
 
     function pause() public onlyManager {
         _pause();
-
         _removeAllowances();
+
+        emit Pause();
     }
 
     function unpause() external onlyManager {
         _unpause();
-
         _giveAllowances();
-
         deposit();
+
+        emit Unpause();
     }
 
     function _giveAllowances() internal {

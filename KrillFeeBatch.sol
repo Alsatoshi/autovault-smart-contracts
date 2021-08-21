@@ -1024,7 +1024,7 @@ contract KrillFeeBatch is Ownable {
     uint constant public REWARD_POOL_FEE = 860;
     uint constant public MAX_FEE = 1000;
 
-    address[] public wNativeToKrillRoute = [wNative, krill];
+    address[] public wNativeToKrillRoute;
 
     constructor(
         address _treasury, 
@@ -1038,6 +1038,9 @@ contract KrillFeeBatch is Ownable {
         unirouter = _unirouter;
         krill = _krill;
         wNative  = _wNative ;
+
+        wNativeToKrillRoute[0] = _wNative;
+        wNativeToKrillRoute[1] = _krill;
 
         IERC20(wNative).safeApprove(unirouter, uint256(-1));
     }
@@ -1064,33 +1067,33 @@ contract KrillFeeBatch is Ownable {
         IERC20(wNative).safeTransfer(rewardPool, rewardsFeeAmount);
     }
 
-    // Manage the contract
-    function setRewardPool(address _rewardPool) external onlyOwner {
-        emit NewRewardPool(rewardPool, _rewardPool);
-        rewardPool = _rewardPool;
-    }
+    // // Manage the contract
+    // function setRewardPool(address _rewardPool) external onlyOwner {
+    //     emit NewRewardPool(rewardPool, _rewardPool);
+    //     rewardPool = _rewardPool;
+    // }
 
-    function setTreasury(address _treasury) external onlyOwner {
-        emit NewTreasury(treasury, _treasury);
-        treasury = _treasury;
-    }
+    // function setTreasury(address _treasury) external onlyOwner {
+    //     emit NewTreasury(treasury, _treasury);
+    //     treasury = _treasury;
+    // }
 
-    function setUnirouter(address _unirouter) external onlyOwner {
-        emit NewUnirouter(unirouter, _unirouter);
+    // function setUnirouter(address _unirouter) external onlyOwner {
+    //     emit NewUnirouter(unirouter, _unirouter);
 
-        IERC20(wNative).safeApprove(_unirouter, uint256(-1));
-        IERC20(wNative).safeApprove(unirouter, 0);
+    //     IERC20(wNative).safeApprove(_unirouter, uint256(-1));
+    //     IERC20(wNative).safeApprove(unirouter, 0);
 
-        unirouter = _unirouter;
-    }
+    //     unirouter = _unirouter;
+    // }
 
-    function setNativeToKrillRoute(address[] memory _route) external onlyOwner {
-        require(_route[0] == wNative);
-        require(_route[_route.length - 1] == krill);
+    // function setNativeToKrillRoute(address[] memory _route) external onlyOwner {
+    //     require(_route[0] == wNative);
+    //     require(_route[_route.length - 1] == krill);
 
-        emit NewKrillRoute(wNativeToKrillRoute, _route);
-        wNativeToKrillRoute = _route;
-    }
+    //     emit NewKrillRoute(wNativeToKrillRoute, _route);
+    //     wNativeToKrillRoute = _route;
+    // }
     
     // Rescue locked funds sent by mistake
     function inCaseTokensGetStuck(address _token) external onlyOwner {

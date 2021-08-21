@@ -436,8 +436,8 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     /* ========== STATE VARIABLES ========== */
 
-    IERC20 public rewardsToken;
-    IERC20 public stakingToken;
+    IERC20 public immutable rewardsToken;
+    IERC20 public immutable stakingToken;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
@@ -459,6 +459,8 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         rewardsToken = IERC20(_rewardsToken);
         stakingToken = IERC20(_stakingToken);
         rewardsDistribution = _rewardsDistribution;
+
+        require(rewardsToken != stakingToken, “same token”)
     }
 
     /* ========== VIEWS ========== */
@@ -493,21 +495,29 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     function stakeWithPermit(uint256 amount, uint deadline, uint8 v, bytes32 r, bytes32 s) external nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Cannot stake 0");
-        _totalSupply = _totalSupply.add(amount);
-        _balances[msg.sender] = _balances[msg.sender].add(amount);
+
+        uint256 balBefore = stakingToken.balanceOf(address(this));       
 
         // permit
         IUniswapV2ERC20(address(stakingToken)).permit(msg.sender, address(this), amount, deadline, v, r, s);
-
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
+
+        uint256 receivedAmount = stakingToken.balanceOf(address(this)).sub(balBefore);
+        _totalSupply = _totalSupply.add(receivedAmount);
+        _balances[msg.sender] = _balances[msg.sender].add(receivedAmount);
+
         emit Staked(msg.sender, amount);
     }
 
     function stake(uint256 amount) external nonReentrant updateReward(msg.sender) {
         require(amount > 0, "Cannot stake 0");
-        _totalSupply = _totalSupply.add(amount);
-        _balances[msg.sender] = _balances[msg.sender].add(amount);
+
+        uint256 balBefore = stakingToken.balanceOf(address(this));
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 receivedAmount = stakingToken.balanceOf(address(this)).sub(balBefore);
+        _totalSupply = _totalSupply.add(receivedAmount);
+        _balances[msg.sender] = _balances[msg.sender].add(receivedAmount);
+        
         emit Staked(msg.sender, amount);
     }
 
@@ -523,7 +533,14 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         uint256 reward = rewards[msg.sender];
         if (reward > 0) {
             rewards[msg.sender] = 0;
-            rewardsToken.safeTransfer(msg.sender, reward);
+
+            uint256 bal = rewardsToken.balanceOf(address(this));
+            if(reward > bal) {
+                rewardsToken.safeTransfer(msg.sender, bal);
+            } else{
+                rewardsToken.safeTransfer(msg.sender, reward);
+            }
+            
             emit RewardPaid(msg.sender, reward);
         }
     }
@@ -537,7 +554,7 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     function notifyRewardAmount(uint256 reward, uint256 rewardsDuration) external onlyRewardsDistribution updateReward(address(0)) {
         require(block.timestamp.add(rewardsDuration) >= periodFinish, "Cannot reduce existing period");
-
+        
         if (block.timestamp >= periodFinish) {
             rewardRate = reward.div(rewardsDuration);
         } else {
@@ -558,6 +575,12 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
         emit RewardAdded(reward, periodFinish);
     }
 
+    function emergencyWithdraw() external {
+        userRewardPerTokenPaid[msg.sender] = 0;
+        rewards[msg.sender] = 0;
+        super.withdraw(balanceOf(msg.sender));
+    }
+
     /* ========== MODIFIERS ========== */
 
     modifier updateReward(address account) {
@@ -568,7 +591,7 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
             userRewardPerTokenPaid[account] = rewardPerTokenStored;
         }
         _;
-    }
+    }    
 
     /* ========== EVENTS ========== */
 

@@ -1289,6 +1289,9 @@ contract StratManager is Ownable, Pausable {
         unirouter = _unirouter;
         vault = _vault;
         krillFeeRecipient = _krillFeeRecipient;
+
+        require(_krillFeeRecipient != address(0));
+        require(_strategist != address(0));
     }
 
     // checks that caller is either owner or keeper.
@@ -1352,7 +1355,6 @@ contract StratManager is Ownable, Pausable {
 }
 
 
-
 pragma solidity ^0.6.12;
 
 abstract contract FeeManager is StratManager {
@@ -1392,19 +1394,25 @@ contract StrategySushiswapLP is StratManager, FeeManager {
     // Tokens used
     address public native;
     address public output;
-    address public want;
+    address public immutable want;
     address public lpToken0;
     address public lpToken1;
 
     // Third party contracts
-    address public chef;
-    uint256 public poolId;
+    address public immutable chef;
+    uint256 public immutable poolId;
 
     // Routes
     address[] public outputToNativeRoute;
     address[] public nativeToOutputRoute;
     address[] public outputToLp0Route;
     address[] public outputToLp1Route;
+
+    bool calledPanic;
+
+    event Panic();
+    event Pause();
+    event Unpause();
 
     /**
      * @dev Event that is fired each time someone harvests the strat.
@@ -1431,6 +1439,10 @@ contract StrategySushiswapLP is StratManager, FeeManager {
         require(_outputToNativeRoute.length >= 2);
         output = _outputToNativeRoute[0];
         native = _outputToNativeRoute[_outputToNativeRoute.length - 1];
+        require(want != output);
+        require(want != native);
+        require(_krillFeeRecipient != address(0));
+        require(_strategist != address(0));
         outputToNativeRoute = _outputToNativeRoute;
         
         // setup lp routing
@@ -1550,34 +1562,30 @@ contract StrategySushiswapLP is StratManager, FeeManager {
         return _amount;
     }
 
-    // called as part of strat migration. Sends all the available funds back to the vault.
-    function retireStrat() external {
-        require(msg.sender == vault, "!vault");
-
-        IMiniChefV2(chef).emergencyWithdraw(poolId, address(this));
-
-        uint256 wantBal = IERC20(want).balanceOf(address(this));
-        IERC20(want).transfer(vault, wantBal);
-    }
-
     // pauses deposits and withdraws all funds from third party systems.
-    function panic() public onlyManager {
+    function panic() external onlyManager {
+        require(!calledPanic, 'Panic was already called once before.');
         pause();
         IMiniChefV2(chef).emergencyWithdraw(poolId, address(this));
+
+        calledPanic = true;
+
+        emit Panic();
     }
 
     function pause() public onlyManager {
         _pause();
-
         _removeAllowances();
+
+        emit Pause();
     }
 
     function unpause() external onlyManager {
         _unpause();
-
         _giveAllowances();
-
         deposit();
+
+        emit Unpause();
     }
 
     function _giveAllowances() internal {

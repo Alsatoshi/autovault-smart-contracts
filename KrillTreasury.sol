@@ -844,14 +844,24 @@ library SafeERC20 {
 pragma solidity ^0.6.12;
 
 contract KrillTreasury is Ownable {
+
     using SafeERC20 for IERC20;
 
+    uint256 unlock_block;
+
+    constructor(uint256 _unlock_block) public {
+        unlock_block = _unlock_block;
+    }
+
     function withdrawTokens(address _token, address _to, uint256 _amount) external onlyOwner {
+        require(block.number > unlock_block);
         IERC20(_token).safeTransfer(_to, _amount);
     }
 
-    function withdrawMatic(address payable _to, uint256 _amount) external onlyOwner {
-        _to.transfer(_amount);
+    function withdrawMatic(address payable _to, uint256 _amount) external payable onlyOwner {
+        require(block.number > UNLOCK_BLOCK);
+        (bool sent, bytes memory data) = _to.call{value: _amount}("");
+        require(sent, "Failed to send Matic");
     }
 
     receive () external payable {}

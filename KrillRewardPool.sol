@@ -523,7 +523,7 @@ contract LPTokenWrapper {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    IERC20 public stakedToken;
+    IERC20 public immutable stakedToken;
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
@@ -541,9 +541,12 @@ contract LPTokenWrapper {
     }
 
     function stake(uint256 amount) public {
-        _totalSupply = _totalSupply.add(amount);
-        _balances[msg.sender] = _balances[msg.sender].add(amount);
+        require(amount > 0, "Cannot stake 0");
+        uint256 balBefore = stakedToken.balanceOf(address(this));        
         stakedToken.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 receivedAmount = stakedToken.balanceOf(address(this)).sub(balBefore);
+        _totalSupply = _totalSupply.add(receivedAmount);
+        _balances[msg.sender] = _balances[msg.sender].add(receivedAmount);
     }
 
     function withdraw(uint256 amount) public {
@@ -557,13 +560,14 @@ contract LPTokenWrapper {
 pragma solidity ^0.5.0;
 
 contract KrillRewardPool is LPTokenWrapper, Ownable {
-    IERC20 public rewardToken;
+    IERC20 public immutable rewardToken;
     uint256 public constant DURATION = 1 days;
 
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
+    uint256 public max_reward_increment;
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
@@ -571,12 +575,15 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
+    event InCaseTokensGetStuck(address token);
 
-    constructor(address _stakedToken, address _rewardToken)
+    constructor(address _stakedToken, address _rewardToken, uint256 _max_reward_increment)
         public
         LPTokenWrapper(_stakedToken)
     {
+        require(_stakedToken != _rewardToken, “same tokens”);
         rewardToken = IERC20(_rewardToken);
+        max_reward_increment = _max_reward_increment;
     }
 
     modifier updateReward(address account) {
@@ -637,7 +644,14 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
         uint256 reward = earned(msg.sender);
         if (reward > 0) {
             rewards[msg.sender] = 0;
-            rewardToken.safeTransfer(msg.sender, reward);
+
+            uint256 bal = rewardToken.balanceOf(address(this));
+            if(reward > bal) {
+                rewardToken.safeTransfer(msg.sender, bal);
+            } else{
+                rewardToken.safeTransfer(msg.sender, reward);
+            }
+            
             emit RewardPaid(msg.sender, reward);
         }
     }
@@ -647,6 +661,8 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
         onlyOwner
         updateReward(address(0))
     {
+        require(reward <= max_reward_increment);
+
         if (block.timestamp >= periodFinish) {
             rewardRate = reward.div(DURATION);
         } else {
@@ -656,6 +672,10 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
         }
         lastUpdateTime = block.timestamp;
         periodFinish = block.timestamp.add(DURATION);
+
+        uint balance = rewardsToken.balanceOf(address(this));
+        require(rewardRate <= balance.div(DURATION), "Provided reward too high");
+
         emit RewardAdded(reward);
     }
 
@@ -665,5 +685,13 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
 
         uint256 amount = IERC20(_token).balanceOf(address(this));
         IERC20(_token).safeTransfer(msg.sender, amount);
+
+        emit InCaseTokensGetStuck(_token);
+    }
+
+    function emergencyWithdraw() external {
+        userRewardPerTokenPaid[msg.sender] = 0;
+        rewards[msg.sender] = 0;
+        super.withdraw(balanceOf(msg.sender));
     }
 }

@@ -1025,6 +1025,10 @@ contract StratManager is Ownable, Pausable {
     address public vault;
     address public krillFeeRecipient;
 
+    event SetStrategist(address strategist);
+    event SetKeeper(address keeper);
+    event SetKrillFeeRecipient(address krillFeeRecipient);
+
     /**
      * @dev Initializes the base strategy.
      * @param _keeper address to use as alternative owner.
@@ -1045,6 +1049,9 @@ contract StratManager is Ownable, Pausable {
         unirouter = _unirouter;
         vault = _vault;
         krillFeeRecipient = _krillFeeRecipient;
+        
+        require(_krillFeeRecipient != address(0));
+        require(_strategist != address(0));
     }
 
     // checks that caller is either owner or keeper.
@@ -1065,6 +1072,8 @@ contract StratManager is Ownable, Pausable {
      */
     function setKeeper(address _keeper) external onlyManager {
         keeper = _keeper;
+
+        emit SetKeeper(_keeper);
     }
 
     /**
@@ -1072,32 +1081,23 @@ contract StratManager is Ownable, Pausable {
      * @param _strategist new strategist address.
      */
     function setStrategist(address _strategist) external {
-        require(msg.sender == strategist, "!strategist");
+        require(msg.sender == strategist, "!strategist");        
+        require(_strategist != address(0), "!nonzero");
         strategist = _strategist;
+
+        emit SetStrategist(_strategist);
     }
 
-    /**
-     * @dev Updates router that will be used for swaps.
-     * @param _unirouter new unirouter address.
-     */
-    function setUnirouter(address _unirouter) external onlyOwner {
-        unirouter = _unirouter;
-    }
-
-    /**
-     * @dev Updates parent vault.
-     * @param _vault new vault address.
-     */
-    function setVault(address _vault) external onlyOwner {
-        vault = _vault;
-    }
-
+    
     /**
      * @dev Updates krill fee recipient.
      * @param _krillFeeRecipient new krill fee recipient address.
      */
     function setKrillFeeRecipient(address _krillFeeRecipient) external onlyOwner {
+        require(_krillFeeRecipient != address(0), "!nonzero");
         krillFeeRecipient = _krillFeeRecipient;
+
+        emit SetKrillFeeRecipient(_krillFeeRecipient);
     }
 
     /**
@@ -1124,17 +1124,24 @@ abstract contract FeeManager is StratManager {
     uint public callFee = 111;
     uint public krillFee = MAX_FEE - STRATEGIST_FEE - callFee;
 
+    event SetCallFee(address fee);
+    event SetWithdrawalFee(address fee);
+
     function setCallFee(uint256 _fee) public onlyManager {
         require(_fee <= MAX_CALL_FEE, "!cap");
         
         callFee = _fee;
         krillFee = MAX_FEE - STRATEGIST_FEE - callFee;
+
+        emit setCallFee(_fee);
     }
 
     function setWithdrawalFee(uint256 _fee) external onlyManager {
         require(_fee <= WITHDRAWAL_FEE_CAP, "!cap");
 
         withdrawalFee = _fee;
+
+        event SetWithdrawalFee(_fee);
     }
 }
 
@@ -1147,17 +1154,23 @@ contract StrategyQuickswapLP is StratManager, FeeManager {
     // Tokens used
     address public native;
     address public output;
-    address public want;
+    address public immutable want;
     address public lpToken0;
     address public lpToken1;
 
     // Third party contracts
-    address public rewardPool;
+    address public immutable rewardPool;
 
     // Routes
     address[] public outputToNativeRoute;
     address[] public outputToLp0Route;
     address[] public outputToLp1Route;
+
+    bool calledPanic;
+
+    event Panic();
+    event Pause();
+    event Unpause();
 
     /**
      * @dev Event that is fired each time someone harvests the strat.
@@ -1181,6 +1194,9 @@ contract StrategyQuickswapLP is StratManager, FeeManager {
 
         output = _outputToNativeRoute[0];
         native = _outputToNativeRoute[_outputToNativeRoute.length - 1];
+
+        require(want != output);
+
         outputToNativeRoute = _outputToNativeRoute;
         
         // setup lp routing
@@ -1285,34 +1301,30 @@ contract StrategyQuickswapLP is StratManager, FeeManager {
         return IRewardPool(rewardPool).balanceOf(address(this));
     }
 
-    // called as part of strat migration. Sends all the available funds back to the vault.
-    function retireStrat() external {
-        require(msg.sender == vault, "!vault");
-
-        IRewardPool(rewardPool).withdraw(balanceOfPool());
-
-        uint256 wantBal = IERC20(want).balanceOf(address(this));
-        IERC20(want).transfer(vault, wantBal);
-    }
-
     // pauses deposits and withdraws all funds from third party systems.
-    function panic() public onlyManager {
+    function panic() external onlyManager {
+        require(!calledPanic, 'Panic was already called once before.');
         pause();
         IRewardPool(rewardPool).withdraw(balanceOfPool());
+
+        calledPanic = true;
+
+        emit Panic();
     }
 
     function pause() public onlyManager {
         _pause();
-
         _removeAllowances();
+
+        emit Pause();
     }
 
     function unpause() external onlyManager {
         _unpause();
-
         _giveAllowances();
-
         deposit();
+
+        emit Unpause();
     }
 
     function _giveAllowances() internal {
@@ -1332,4 +1344,28 @@ contract StrategyQuickswapLP is StratManager, FeeManager {
         IERC20(lpToken0).safeApprove(unirouter, 0);
         IERC20(lpToken1).safeApprove(unirouter, 0);
     }
+
+
+    function convertDustToEarned(address[] memory _lp0ToWantRoute, address[] memory _lp1ToWantRoute) public whenNotPaused {        
+
+        // Converts dust tokens into earned tokens, which will be reinvested on the next earn().
+
+        // Converts lpToken0 dust (if any) to earned tokens
+        uint256 token0Amt = IERC20(lpToken0).balanceOf(address(this));
+        if (lpToken0 != want && token0Amt > 0) {
+            IERC20(lpToken0).safeIncreaseAllowance(unirouter, token0Amt);
+            // Swap all dust tokens to want tokens
+            IUniswapRouterETH(unirouter).swapExactTokensForTokens(token0Amt, 0, _lp0ToWantRoute, address(this), now);
+            
+        }
+
+        // Converts lpToken1 dust (if any) to earned tokens
+        uint256 token1Amt = IERC20(lpToken1).balanceOf(address(this));
+        if (lpToken1 != want && token1Amt > 0) {
+            IERC20(lpToken1).safeIncreaseAllowance(unirouter, token1Amt);
+            // Swap all dust tokens to want tokens
+            IUniswapRouterETH(unirouter).swapExactTokensForTokens(token1Amt, 0, _lp1ToWantRoute, address(this), now);
+        }
+    }
+
 }
