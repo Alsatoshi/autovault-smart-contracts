@@ -1385,7 +1385,7 @@ abstract contract FeeManager is StratManager {
 }
 
 
-pragma solidity ^0.6.0;
+pragma solidity ^0.6.5;
 
 contract StrategySushiswapLP is StratManager, FeeManager {
     using SafeERC20 for IERC20;

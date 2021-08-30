@@ -1183,22 +1183,6 @@ contract StratManager is Ownable, Pausable {
     }
 
     /**
-     * @dev Updates router that will be used for swaps.
-     * @param _unirouter new unirouter address.
-     */
-    function setUnirouter(address _unirouter) external onlyOwner {
-        unirouter = _unirouter;
-    }
-
-    /**
-     * @dev Updates parent vault.
-     * @param _vault new vault address.
-     */
-    function setVault(address _vault) external onlyOwner {
-        vault = _vault;
-    }
-
-    /**
      * @dev Updates krill fee recipient.
      * @param _krillFeeRecipient new krill fee recipient address.
      */
@@ -1244,7 +1228,7 @@ abstract contract FeeManager is StratManager {
 }
 
 
-pragma solidity ^0.6.0;
+pragma solidity ^0.6.5;
 
 contract StrategyJetswapLP is StratManager, FeeManager {
     using SafeERC20 for IERC20;
