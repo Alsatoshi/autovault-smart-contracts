@@ -1131,6 +1131,11 @@ contract StratManager is Ownable, Pausable {
     address public vault;
     address public krillFeeRecipient;
 
+    event SetStrategist(address strategist);
+    event SetKeeper(address keeper);
+    event SetKrillFeeRecipient(address krillFeeRecipient);
+
+
     /**
      * @dev Initializes the base strategy.
      * @param _keeper address to use as alternative owner.
@@ -1174,6 +1179,7 @@ contract StratManager is Ownable, Pausable {
      */
     function setKeeper(address _keeper) external onlyManager {
         keeper = _keeper;
+        emit SetKeeper(_keeper);
     }
 
     /**
@@ -1181,8 +1187,11 @@ contract StratManager is Ownable, Pausable {
      * @param _strategist new strategist address.
      */
     function setStrategist(address _strategist) external {
+        require(_strategist != address(0), "!nonzero");
         require(msg.sender == strategist, "!strategist");
         strategist = _strategist;
+
+        emit SetStrategist(_strategist);
     }
 
     /**
@@ -1190,7 +1199,10 @@ contract StratManager is Ownable, Pausable {
      * @param _krillFeeRecipient new krill fee recipient address.
      */
     function setKrillFeeRecipient(address _krillFeeRecipient) external onlyOwner {
+        require(_krillFeeRecipient != address(0), "!nonzero");
         krillFeeRecipient = _krillFeeRecipient;
+
+        emit SetKrillFeeRecipient(_krillFeeRecipient);
     }
 
     /**
@@ -1216,17 +1228,24 @@ abstract contract FeeManager is StratManager {
     uint public callFee = 111;
     uint public krillFee = MAX_FEE - STRATEGIST_FEE - callFee;
 
+    event SetCallFee(uint256  _fee);
+    event SetWithdrawalFee(uint256  _fee);
+
     function setCallFee(uint256 _fee) external onlyManager {
         require(_fee <= MAX_CALL_FEE, "!cap");
         
         callFee = _fee;
         krillFee = MAX_FEE - STRATEGIST_FEE - callFee;
+
+        emit SetCallFee(_fee);
     }
 
     function setWithdrawalFee(uint256 _fee) external onlyManager {
         require(_fee <= WITHDRAWAL_FEE_CAP, "!cap");
 
         withdrawalFee = _fee;
+
+        emit SetWithdrawalFee(_fee);
     }
 }
 
@@ -1287,8 +1306,8 @@ contract StrategyApeswapLP is StratManager, FeeManager {
         native = _outputToNativeRoute[_outputToNativeRoute.length - 1];
 
         require(want != output);
-        require(_krillFeeRecipient != address(0));
-        require(_strategist != address(0));
+        require(_krillFeeRecipient != address(0), "nonzero");
+        require(_strategist != address(0), "nonzero");
 
         outputToNativeRoute = _outputToNativeRoute;
 

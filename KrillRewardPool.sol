@@ -581,7 +581,7 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
         public
         LPTokenWrapper(_stakedToken)
     {
-        require(_stakedToken != _rewardToken, “same tokens”);
+        require(_stakedToken != _rewardToken, "same tokens");
         rewardToken = IERC20(_rewardToken);
         max_reward_increment = _max_reward_increment;
     }

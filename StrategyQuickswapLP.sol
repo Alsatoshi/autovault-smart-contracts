@@ -1196,6 +1196,8 @@ contract StrategyQuickswapLP is StratManager, FeeManager {
         native = _outputToNativeRoute[_outputToNativeRoute.length - 1];
 
         require(want != output);
+        require(_krillFeeRecipient != address(0), "nonzero");
+        require(_strategist != address(0), "nonzero");
 
         outputToNativeRoute = _outputToNativeRoute;
         

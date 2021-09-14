@@ -915,6 +915,13 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
+     * Override transfer function because of checking to prevent directly transfer to vault
+     */
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        require(recipient != address(this), "!Use deposit function");
+        return super.transfer();
+    }
+    /**
      * @dev It calculates the total underlying value of {token} held by the system.
      * It takes into account the vault contract balance, the strategy contract balance
      *  and the balance deployed in other contracts as part of the strategy.
@@ -978,8 +985,11 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
      */
     function earn(uint _amount) internal {
         uint256 _prevBal = balance();
+        uint256 _prevStratBal = want().balanceOf(address(strategy));
         want().safeTransfer(address(strategy), _amount);
         strategy.deposit();
+        uint256 _afterStratBal = want().balanceOf(address(strategy));
+        require(_afterStratBal - _prevStratBal > _amount.mul(9).div(10));
         require(balance() >= _prevBal, "not profitable");
     }
 
