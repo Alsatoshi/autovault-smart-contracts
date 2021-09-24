@@ -730,11 +730,6 @@ contract StakingRewardsFactory is Ownable {
 
             uint256 balBefore = IERC20(rewardsToken).balanceOf(info.stakingRewards);
 
-            require(
-                IERC20(rewardsToken).transfer(info.stakingRewards, rewardAmount),
-                'StakingRewardsFactory::notifyRewardAmount: transfer failed'
-            );
-
             rewardAmount = IERC20(rewardsToken).balanceOf(info.stakingRewards).sub(balBefore);
 
             StakingRewards(info.stakingRewards).notifyRewardAmount(rewardAmount, duration);

@@ -659,7 +659,7 @@ contract KrillRewardPool is LPTokenWrapper, Ownable {
         onlyOwner
         updateReward(address(0))
     {
-        require(reward <= max_reward_increment);
+        require(reward <= max_reward_increment, "Excessive amount could block deposits and withdrawals");
 
         if (block.timestamp >= periodFinish) {
             rewardRate = reward.div(DURATION);

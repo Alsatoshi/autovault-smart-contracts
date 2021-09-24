@@ -967,12 +967,16 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
         earn(_amount);
         uint256 _after = balance();
         _amount = _after.sub(_pool); // Additional check for deflationary tokens
+
+        
         uint256 shares = 0;
         if (totalSupply() == 0) {
             shares = _amount;
         } else {
             shares = (_amount.mul(totalSupply())).div(_pool);
         }
+
+
         _mint(msg.sender, shares);
 
         emit Deposit(msg.sender, _amount);
@@ -989,7 +993,7 @@ contract KrillVault is ERC20, Ownable, ReentrancyGuard {
         want().safeTransfer(address(strategy), _amount);
         strategy.deposit();
         uint256 _afterStratBal = want().balanceOf(address(strategy));
-        require(_afterStratBal - _prevStratBal > _amount.mul(9).div(10));
+        require(_afterStratBal - _prevStratBal > _amount.mul(9).div(10), "Insufficient shares for user");
         require(balance() >= _prevBal, "not profitable");
     }
 

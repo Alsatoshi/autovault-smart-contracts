@@ -442,6 +442,7 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
+    uint256 public max_reward_increment;
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
@@ -454,12 +455,13 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
     constructor(
         address _rewardsDistribution,
         address _rewardsToken,
-        address _stakingToken
+        address _stakingToken,
+        uint256 _max_reward_increment
     ) public {
         rewardsToken = IERC20(_rewardsToken);
         stakingToken = IERC20(_stakingToken);
         rewardsDistribution = _rewardsDistribution;
-
+        max_reward_increment = _max_reward_increment;
         require(rewardsToken != stakingToken, “same token”)
     }
 
@@ -554,7 +556,7 @@ contract StakingRewards is IStakingRewards, RewardsDistributionRecipient, Reentr
 
     function notifyRewardAmount(uint256 reward, uint256 rewardsDuration) external onlyRewardsDistribution updateReward(address(0)) {
         require(block.timestamp.add(rewardsDuration) >= periodFinish, "Cannot reduce existing period");
-        
+        require(reward <= max_reward_increment, "Excessive amount could block deposits and withdrawals");
         
         if (block.timestamp >= periodFinish) {
             rewardRate = reward.div(rewardsDuration);

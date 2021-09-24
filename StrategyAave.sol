@@ -1289,7 +1289,7 @@ contract StrategyAave is StratManager, FeeManager {
 
     // Tokens used
     address constant public wmatic = address(0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270);
-    address constant public eth = address(0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619);
+    address constant public weth = address(0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619);
     address public immutable want;
     address public immutable aToken;
     address public immutable varDebtToken;
@@ -1363,10 +1363,8 @@ contract StrategyAave is StratManager, FeeManager {
         require(borrowRate < borrowRateMax);
         require(borrowDepth < BORROW_DEPTH_MAX);
 
-        if (want == eth) {
-            wmaticToWantRoute = [wmatic, eth];
-        } else if (want != wmatic) {
-            wmaticToWantRoute = [wmatic, eth, want];
+        if (want != wmatic) {
+            wmaticToWantRoute = [wmatic, want];
         }
 
         _giveAllowances();
